@@ -11,8 +11,11 @@ RUN export DEBIAN_FRONTEND=noninteractive \
     && apt update \
     && apt install squid shadowsocks-libev privoxy wget -y
 COPY ./privoxy.conf /etc/privoxy/config
+COPY ./gen_squid_conf.sh /usr/local/sbin/gen_squid_conf.sh
 COPY ./start.sh /usr/local/sbin/start.sh
 RUN chmod +x /usr/local/sbin/start.sh
+RUN chmod +x /usr/local/sbin/gen_squid_conf.sh
+RUN /usr/local/sbin/gen_squid_conf.sh
 
 EXPOSE 3128
 ENTRYPOINT [ "/bin/bash", "-c", "/usr/local/sbin/start.sh" ]
