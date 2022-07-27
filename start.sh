@@ -2,31 +2,6 @@
 set -e
 
 ####### Parameters #######
-if [[ -z "${SS_SERVER_HOST}" ]]; then
-  echo "environment variable SS_SERVER_HOST is not set"
-  exit 1; 
-fi
-
-if [[ -z "${SS_SERVER_PORT}" ]]; then
-  echo "environment variable SS_SERVER_PORT is not set"
-  exit 1; 
-fi
-
-if [[ -z "${SS_SERVER_PASSWORD}" ]]; then
-  echo "environment variable SS_SERVER_PASSWORD is not set"
-  exit 1; 
-fi
-
-if [[ -z "${SS_SERVER_ENCRYPT_METHOD}" ]]; then
-  echo "environment variable SS_SERVER_ENCRYPT_METHOD is not set"
-  exit 1; 
-fi
-
-if [[ -z "${SS_SERVER_TIMEOUT}" ]]; then
-  echo "environment variable SS_SERVER_TIMEOUT is not set"
-  exit 1; 
-fi
-
 if [[ -z "${CHINA_IP_LIST_UPDATE_INTERVAL_HOUR}" ]]; then
   echo "environment variable CHINA_IP_LIST_UPDATE_INTERVAL_HOUR is not set, using default value: 24"
   CHINA_IP_LIST_UPDATE_INTERVAL_HOUR=24
@@ -50,7 +25,7 @@ function reconfig_squid {
 }
 
 ########## Main ##########
-/usr/bin/ss-local -s ${SS_SERVER_HOST} -p ${SS_SERVER_PORT} -l 1080 -k ${SS_SERVER_PASSWORD} -m ${SS_SERVER_ENCRYPT_METHOD} -t ${SS_SERVER_TIMEOUT} -f /run/ss-local.pid
+/usr/local/bin/gfwpass &
 /usr/sbin/privoxy --pidfile /run/privoxy.pid /etc/privoxy/config
 /usr/sbin/squid -s -f ${SQUID_CONF_FILE}
 reconfig_squid
