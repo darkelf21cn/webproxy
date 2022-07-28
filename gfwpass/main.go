@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"gfwpass/conf"
 	"gfwpass/service"
 	"gfwpass/util"
@@ -37,5 +38,5 @@ func runService() {
 		logger.Error("failed to initialize the service", zap.Error(err))
 		os.Exit(1)
 	}
-	service.Start()
+	service.Start(context.Background())
 }

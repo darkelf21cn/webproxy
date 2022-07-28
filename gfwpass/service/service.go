@@ -22,8 +22,7 @@ type IProxy interface {
 	Executable() string
 	Ping(timeout time.Duration)
 	Latency() time.Duration
-	Start() error
-	Stop()
+	Start(ctx context.Context) error
 	String() string
 	Cmd() string
 }
@@ -44,8 +43,6 @@ func (s Proxies) Swap(i, j int) {
 
 type Service struct {
 	logger  *zap.Logger
-	ctx     context.Context
-	cancel  context.CancelFunc
 	proxies Proxies
 
 	healthCheckURLs            []string
@@ -68,7 +65,6 @@ func NewService(logger *zap.Logger, conf conf.Config) (*Service, error) {
 		subscriptionUpdateInterval: time.Duration(int64(conf.SubscriptionUpdateIntervalHours) * int64(time.Hour)),
 		port:                       conf.Port,
 	}
-	s.ctx, s.cancel = context.WithCancel(context.Background())
 	err := s.subscribeProxyServers()
 	if err != nil {
 		return nil, err
@@ -76,16 +72,16 @@ func NewService(logger *zap.Logger, conf conf.Config) (*Service, error) {
 	return s, nil
 }
 
-func (s *Service) Start() error {
+func (s *Service) Start(ctx context.Context) error {
 	if len(s.proxies) == 0 {
 		return fmt.Errorf("no server available")
 	}
 
-	go s.RunSubscriptionReloaderDaemon(s.ctx)
+	go s.RunSubscriptionReloaderDaemon(ctx)
 	s.logger.Info("subscription reloader daemon started")
 	for {
 		tryNextProxy := func() {
-			// stop the server, put it to the end of the queue
+			// put the current proxy to the end of the queue
 			time.Sleep(2 * time.Second)
 			s.proxies = append(s.proxies[1:], s.proxies[0])
 			s.logger.Info("try next proxy")
@@ -93,7 +89,8 @@ func (s *Service) Start() error {
 
 		// start the first server
 		s.logger.Info("starting proxy", zap.String("cmd", s.proxies[0].Cmd()))
-		err := s.proxies[0].Start()
+		ctx, stopProxy := context.WithCancel(ctx)
+		err := s.proxies[0].Start(ctx)
 		if err != nil {
 			s.logger.Info("failed to start the proxy", zap.Error(err))
 			tryNextProxy()
@@ -105,28 +102,17 @@ func (s *Service) Start() error {
 		time.Sleep(5 * time.Second)
 
 		// start health-check
-		code := s.RunHealthCheckDaemon(s.ctx)
+		code := s.RunHealthCheckDaemon(ctx)
+		s.logger.Info("stopping proxy due to health-check failed")
+		stopProxy()
 		if code < 0 {
 			return nil
 		} else {
-			s.logger.Info("stopping proxy due to health-check failed")
-			s.proxies[0].Stop()
 			waitPortToBeFree(s.logger, s.port)
 			tryNextProxy()
 			continue
 		}
 	}
-}
-
-func (s *Service) Stop() error {
-	if s.cancel == nil {
-		s.logger.Info("service has stopped")
-		return nil
-	}
-	s.cancel()
-	s.logger.Debug("stopping service")
-	s.cancel = nil
-	return nil
 }
 
 func (s *Service) RunHealthCheckDaemon(ctx context.Context) int {

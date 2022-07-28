@@ -21,8 +21,6 @@ type ShadowSocksProxy struct {
 	plugin     string
 	pluginOpts string
 	latency    time.Duration
-	ctx        context.Context
-	cancel     context.CancelFunc
 }
 
 func (s ShadowSocksProxy) Executable() string {
@@ -38,13 +36,9 @@ func (s ShadowSocksProxy) Latency() time.Duration {
 	return s.latency
 }
 
-func (s *ShadowSocksProxy) Start() error {
-	cmd := exec.CommandContext(s.ctx, s.Executable(), s.parseArgs()...)
+func (s *ShadowSocksProxy) Start(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, s.Executable(), s.parseArgs()...)
 	return cmd.Start()
-}
-
-func (s *ShadowSocksProxy) Stop() {
-	s.cancel()
 }
 
 func (s *ShadowSocksProxy) String() string {
@@ -120,7 +114,6 @@ func NewShadowSocksProxy(u *url.URL, localPort int) (IProxy, error) {
 		remotePort: u.Port(),
 		localPort:  localPort,
 	}
-	p.ctx, p.cancel = context.WithCancel(context.TODO())
 	if u.User != nil {
 		_, pwdSet := u.User.Password()
 		if !pwdSet {
