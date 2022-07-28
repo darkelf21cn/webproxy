@@ -102,7 +102,7 @@ func (s *Service) Start(ctx context.Context) error {
 		time.Sleep(5 * time.Second)
 
 		// start health-check
-		code := s.RunHealthCheckDaemon(ctx)
+		code := s.RunHealthCheckerDaemon(ctx)
 		s.logger.Info("stopping proxy due to health-check failed")
 		stopProxy()
 		if code < 0 {
@@ -115,7 +115,7 @@ func (s *Service) Start(ctx context.Context) error {
 	}
 }
 
-func (s *Service) RunHealthCheckDaemon(ctx context.Context) int {
+func (s *Service) RunHealthCheckerDaemon(ctx context.Context) int {
 	s.logger.Info("starting health-check daemon")
 	client, err := util.NewHttpClient(fmt.Sprintf(":%d", s.port), s.healthCheckTimeout)
 	if err != nil {
@@ -251,7 +251,7 @@ func ping(host, port string, timeout time.Duration) (time.Duration, error) {
 	start := time.Now()
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), timeout)
 	if err != nil {
-		return 9223372036854775807, err
+		return 1<<63 - 1, err
 	}
 	defer conn.Close()
 	return time.Since(start), nil
