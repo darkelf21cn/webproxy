@@ -13,6 +13,8 @@ import (
 const SSBin = "/usr/bin/ss-local"
 
 type ShadowSocksProxy struct {
+	ctx        context.Context
+	cancel     context.CancelFunc
 	remoteHost string
 	remotePort string
 	localPort  int
@@ -36,9 +38,17 @@ func (s ShadowSocksProxy) Latency() time.Duration {
 	return s.latency
 }
 
-func (s *ShadowSocksProxy) Start(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, s.Executable(), s.parseArgs()...)
-	return cmd.Start()
+func (s *ShadowSocksProxy) Start() (func(), error) {
+	cmd := exec.CommandContext(s.ctx, s.Executable(), s.parseArgs()...)
+	err := cmd.Start()
+	if err != nil {
+		return nil, err
+	}
+	stopFunc := func() {
+		s.cancel()
+		cmd.Wait()
+	}
+	return stopFunc, nil
 }
 
 func (s *ShadowSocksProxy) String() string {
@@ -108,8 +118,11 @@ func (s ShadowSocksProxy) parseArgs() []string {
 	return args
 }
 
-func NewShadowSocksProxy(u *url.URL, localPort int) (IProxy, error) {
+func NewShadowSocksProxy(ctx context.Context, u *url.URL, localPort int) (IProxy, error) {
+	c, cancel := context.WithCancel(ctx)
 	p := &ShadowSocksProxy{
+		ctx:        c,
+		cancel:     cancel,
 		remoteHost: u.Hostname(),
 		remotePort: u.Port(),
 		localPort:  localPort,

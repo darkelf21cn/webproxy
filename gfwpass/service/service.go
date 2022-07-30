@@ -22,7 +22,7 @@ type IProxy interface {
 	Executable() string
 	Ping(timeout time.Duration)
 	Latency() time.Duration
-	Start(ctx context.Context) error
+	Start() (func(), error)
 	String() string
 	Cmd() string
 }
@@ -42,6 +42,7 @@ func (s Proxies) Swap(i, j int) {
 }
 
 type Service struct {
+	ctx     context.Context
 	logger  *zap.Logger
 	proxies Proxies
 
@@ -54,8 +55,9 @@ type Service struct {
 	port                       int
 }
 
-func NewService(logger *zap.Logger, conf conf.Config) (*Service, error) {
+func NewService(ctx context.Context, logger *zap.Logger, conf conf.Config) (*Service, error) {
 	s := &Service{
+		ctx:                        ctx,
 		logger:                     logger,
 		healthCheckURLs:            conf.HealthCheck.URLs,
 		healthCheckInterval:        time.Duration(conf.HealthCheck.IntervalSec * int64(time.Second)),
@@ -72,12 +74,12 @@ func NewService(logger *zap.Logger, conf conf.Config) (*Service, error) {
 	return s, nil
 }
 
-func (s *Service) Start(ctx context.Context) error {
+func (s *Service) Start() error {
 	if len(s.proxies) == 0 {
 		return fmt.Errorf("no server available")
 	}
 
-	go s.RunSubscriptionReloaderDaemon(ctx)
+	go s.RunSubscriptionReloaderDaemon(s.ctx)
 	s.logger.Info("subscription reloader daemon started")
 	for {
 		tryNextProxy := func() {
@@ -89,8 +91,7 @@ func (s *Service) Start(ctx context.Context) error {
 
 		// start the first server
 		s.logger.Info("starting proxy", zap.String("cmd", s.proxies[0].Cmd()))
-		ctx, stopProxy := context.WithCancel(ctx)
-		err := s.proxies[0].Start(ctx)
+		stop, err := s.proxies[0].Start()
 		if err != nil {
 			s.logger.Info("failed to start the proxy", zap.Error(err))
 			tryNextProxy()
@@ -102,9 +103,9 @@ func (s *Service) Start(ctx context.Context) error {
 		time.Sleep(5 * time.Second)
 
 		// start health-check
-		code := s.RunHealthCheckerDaemon(ctx)
+		code := s.RunHealthCheckerDaemon(s.ctx)
 		s.logger.Info("stopping proxy due to health-check failed")
-		stopProxy()
+		stop()
 		if code < 0 {
 			return nil
 		} else {
@@ -164,7 +165,10 @@ func (s *Service) checkHealth(client *http.Client, attempts int) error {
 		ok := true
 		for j := 0; j < len(urls); j++ {
 			url := urls[j]
-			_, err := client.Get(url)
+			resp, err := client.Get(url)
+			if resp != nil {
+				resp.Body.Close()
+			}
 			if err != nil {
 				ok = false
 				s.logger.Info(fmt.Sprintf("probe %s failed at %d/%d attempt", url, i, attempts))
@@ -218,7 +222,7 @@ func (s *Service) subscribeProxyServers() error {
 		switch strings.ToLower(u.Scheme) {
 		case "ss":
 			var err error
-			proxy, err = NewShadowSocksProxy(u, s.port)
+			proxy, err = NewShadowSocksProxy(s.ctx, u, s.port)
 			if err != nil {
 				s.logger.Error(fmt.Sprintf("invalid shadowsocks proxy url, skipping %s", urlStr), zap.Error(err))
 				continue
